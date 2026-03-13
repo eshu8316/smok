@@ -753,11 +753,18 @@ function onSmoke(){
   function updateLocation(lat,lng){
     entry.lat=lat; entry.lng=lng;
     currentLat=lat; currentLng=lng;
-    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lng=${lng}&format=json&addressdetails=1`,{headers:{'Accept-Language':'zh'}})
+    // 先显示坐标，查到地址再更新
+    entry.address=lat.toFixed(4)+', '+lng.toFixed(4);
+    refreshHome();
+    if(document.getElementById('mapScreen').classList.contains('active')) refreshMapMarkers();
+    const ctrl=new AbortController();
+    setTimeout(()=>ctrl.abort(),5000);
+    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lng=${lng}&format=json&addressdetails=1`,
+      {headers:{'Accept-Language':'zh'},signal:ctrl.signal})
       .then(r=>r.json()).then(data=>{
-        entry.address=data.address?.road||data.address?.suburb||data.address?.city_district||data.display_name?.split(',')[0]||'当前位置';
+        entry.address=data.address?.road||data.address?.suburb||data.address?.city_district||data.display_name?.split(',')[0]||entry.address;
         refreshHome(); broadcastSmoke(entry.address);
-      }).catch(()=>{ entry.address='当前位置'; refreshHome(); broadcastSmoke('当前位置'); });
+      }).catch(()=>{ broadcastSmoke(entry.address); });
   }
 
   if(currentLat&&currentLng){
