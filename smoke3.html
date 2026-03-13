@@ -500,8 +500,8 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:22px;height:22px;b
         <div class="aura-ring"></div>
         <!-- 进度圆环 -->
         <svg class="ring-svg" width="250" height="250" viewBox="0 0 250 250">
-          <circle class="ring-bg" cx="125" cy="125" r="112" fill="none" stroke-width="7"/>
-          <circle class="ring-arc" id="ringArc" cx="125" cy="125" r="112" fill="none" stroke-width="7"
+          <circle class="ring-bg" id="ringBg" cx="125" cy="125" r="112" fill="none" stroke-width="5"/>
+          <circle class="ring-arc" id="ringArc" cx="125" cy="125" r="112" fill="none" stroke-width="5"
             stroke-dasharray="704" stroke-dashoffset="704"
             transform="rotate(-90 125 125)"/>
         </svg>
@@ -1004,7 +1004,7 @@ function locateMe(){
 
 // ─── Home ────────────────────────────────────────────────
 function refreshHome(){
-  document.getElementById('hName').textContent='Hi，'+S.name;
+  document.getElementById('hName').textContent='Hi' + (S.name ? '，'+S.name : '');
   const n=new Date();
   document.getElementById('hDate').textContent=
     (n.getMonth()+1)+'月'+n.getDate()+'日 '+['周日','周一','周二','周三','周四','周五','周六'][n.getDay()];
@@ -1196,10 +1196,23 @@ function showToast(msg){const t=document.getElementById('toast');t.textContent=m
 // ─── 进度圆环 ─────────────────────────────────────────────
 function updateRing(pct, color){
   const arc=document.getElementById('ringArc');
+  const bg=document.getElementById('ringBg');
   if(!arc) return;
   const total=704;
-  arc.style.strokeDashoffset=total*(1-Math.min(pct,1));
-  arc.style.stroke=color;
+  if(pct>1){
+    // 超出目标：细虚线红圈，不遮挡按钮
+    arc.style.strokeDasharray='10 6';
+    arc.style.strokeDashoffset='0';
+    arc.style.stroke='rgba(255,59,48,.55)';
+    arc.style.strokeWidth='3';
+    if(bg) bg.style.opacity='0';
+  } else {
+    arc.style.strokeDasharray='704';
+    arc.style.strokeDashoffset=total*(1-pct);
+    arc.style.stroke=color;
+    arc.style.strokeWidth='5';
+    if(bg) bg.style.opacity='1';
+  }
 }
 
 // ─── 状态横幅 ─────────────────────────────────────────────
