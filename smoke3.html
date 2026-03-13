@@ -727,7 +727,7 @@ function goTab(id,btn){
 }
 
 // ─── Smoke ───────────────────────────────────────────────
-async function onSmoke(){
+function onSmoke(){
   // ripple + pulse
   const b=document.getElementById('bigBtn');
   const r=document.createElement('div');r.className='rip';
@@ -742,34 +742,27 @@ async function onSmoke(){
   playTone(360);playTone(480,.08);
   anim(b,'ab');
 
-  // get position
-  showToast('📍 正在获取位置...');
-  const pos = await getPos();
-  let lat=pos?pos.lat:null, lng=pos?pos.lng:null;
-  let address='未知位置';
-
-  if(lat&&lng){
-    currentLat=lat; currentLng=lng;
-    // reverse geocode via Nominatim
-    try{
-      const res=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lng=${lng}&format=json&addressdetails=1`,{headers:{'Accept-Language':'zh'}});
-      const data=await res.json();
-      address=data.address?.road||data.address?.suburb||data.address?.city_district||data.display_name?.split(',')[0]||'当前位置';
-    }catch(e){ address='当前位置'; }
-  } else {
-    // demo fallback
-    lat=31.2304+(Math.random()-.5)*0.005;
-    lng=121.4737+(Math.random()-.5)*0.005;
-    address='当前位置（演示）';
-    showToast('⚠️ 未获取到GPS，使用演示坐标');
-  }
-
-  const entry={id:Date.now(),ts:new Date(),lat,lng,address,cost:S.price/S.packSize};
+  // 立即记录，位置后台填充
+  const lat=currentLat, lng=currentLng;
+  const entry={id:Date.now(),ts:new Date(),lat,lng,address:'定位中...',cost:S.price/S.packSize};
   S.logs.push(entry);
   refreshHome();
   const td=todayLogs();
-  showToast('✅ 记录于 '+address+' · 今天第 '+td.length+' 根');
-  broadcastSmoke(address);
+  showToast('✅ 已记录 · 今天第 '+td.length+' 根');
+  broadcastSmoke(lat&&lng?'当前位置':'未知位置');
+
+  // 后台获取地址，更新记录
+  if(lat&&lng){
+    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lng=${lng}&format=json&addressdetails=1`,{headers:{'Accept-Language':'zh'}})
+      .then(r=>r.json()).then(data=>{
+        const addr=data.address?.road||data.address?.suburb||data.address?.city_district||data.display_name?.split(',')[0]||'当前位置';
+        entry.address=addr;
+        refreshHome();
+      }).catch(()=>{ entry.address='当前位置'; refreshHome(); });
+  } else {
+    entry.address='未知位置（无GPS）';
+    refreshHome();
+  }
 
   // refresh map if visible
   if(document.getElementById('mapScreen').classList.contains('active')) refreshMapMarkers();
