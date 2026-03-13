@@ -742,26 +742,34 @@ function onSmoke(){
   playTone(360);playTone(480,.08);
   anim(b,'ab');
 
-  // 立即记录，位置后台填充
-  const lat=currentLat, lng=currentLng;
-  const entry={id:Date.now(),ts:new Date(),lat,lng,address:'定位中...',cost:S.price/S.packSize};
+  // 立即记录
+  const entry={id:Date.now(),ts:new Date(),lat:currentLat,lng:currentLng,address:'定位中...',cost:S.price/S.packSize};
   S.logs.push(entry);
   refreshHome();
   const td=todayLogs();
   showToast('✅ 已记录 · 今天第 '+td.length+' 根');
-  broadcastSmoke(lat&&lng?'当前位置':'未知位置');
 
-  // 后台获取地址，更新记录
-  if(lat&&lng){
+  // 后台主动请求位置（不管watchPosition有没有拿到）
+  function updateLocation(lat,lng){
+    entry.lat=lat; entry.lng=lng;
+    currentLat=lat; currentLng=lng;
     fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lng=${lng}&format=json&addressdetails=1`,{headers:{'Accept-Language':'zh'}})
       .then(r=>r.json()).then(data=>{
-        const addr=data.address?.road||data.address?.suburb||data.address?.city_district||data.display_name?.split(',')[0]||'当前位置';
-        entry.address=addr;
-        refreshHome();
-      }).catch(()=>{ entry.address='当前位置'; refreshHome(); });
+        entry.address=data.address?.road||data.address?.suburb||data.address?.city_district||data.display_name?.split(',')[0]||'当前位置';
+        refreshHome(); broadcastSmoke(entry.address);
+      }).catch(()=>{ entry.address='当前位置'; refreshHome(); broadcastSmoke('当前位置'); });
+  }
+
+  if(currentLat&&currentLng){
+    updateLocation(currentLat,currentLng);
+  } else if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(
+      p=>updateLocation(p.coords.latitude,p.coords.longitude),
+      ()=>{ entry.address='未知位置'; refreshHome(); broadcastSmoke('未知位置'); },
+      {timeout:8000,maximumAge:0,enableHighAccuracy:false}
+    );
   } else {
-    entry.address='未知位置（无GPS）';
-    refreshHome();
+    entry.address='未知位置'; refreshHome();
   }
 
   // refresh map if visible
