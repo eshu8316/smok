@@ -1022,9 +1022,9 @@ function refreshHome(){
   renderStatus();
 
   // 圆环进度
-  const pct=td.length/Math.max(1,S.habit);
-  const ringColor=pct<1?'#34C759':pct===1?'#FF9500':'#FF3B30';
-  updateRing(pct,ringColor);
+  const ringPct=td.length/Math.max(1,S.habit);
+  const ringColor=ringPct<1?'#34C759':ringPct===1?'#FF9500':'#FF3B30';
+  updateRing(ringPct,ringColor);
 
   // Streak 徽章
   const streak=calcStreak();
