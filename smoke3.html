@@ -673,7 +673,6 @@ function chk(){document.getElementById('goBtn').disabled=document.getElementById
 
 function startApp(){
   S.name=document.getElementById('sName').value.trim();
-  injectDemoData();
   refreshAll();
   goTab('home',document.querySelector('.tab'));
   initGPS();
@@ -790,6 +789,11 @@ function initMap(){
   setTimeout(()=>{
     leafMap.invalidateSize();
     refreshMapMarkers();
+    // 无记录时定位到用户实际位置
+    if(!S.logs.filter(l=>l.lat).length){
+      if(currentLat&&currentLng) leafMap.setView([currentLat,currentLng],15);
+      else leafMap.setView([39.9042,116.4074],4); // 默认中国视角
+    }
   },80);
 }
 
