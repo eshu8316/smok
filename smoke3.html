@@ -653,10 +653,16 @@ function setGPSStatus(s){
 }
 function getPos(){
   return new Promise(res=>{
-    if(!gpsAllowed||!document.getElementById('gpsToggle').checked){res(null);return}
+    if(!document.getElementById('gpsToggle').checked){res(null);return}
+    // 已有坐标直接用，不重复请求
+    if(currentLat&&currentLng){res({lat:currentLat,lng:currentLng});return}
+    if(!navigator.geolocation){res(null);return}
+    // 超时后直接放弃，走演示坐标
+    const t=setTimeout(()=>res(null),5000);
     navigator.geolocation.getCurrentPosition(
-      p=>res({lat:p.coords.latitude,lng:p.coords.longitude}),
-      ()=>res(null),{timeout:6000,maximumAge:30000}
+      p=>{clearTimeout(t);res({lat:p.coords.latitude,lng:p.coords.longitude})},
+      ()=>{clearTimeout(t);res(null)},
+      {timeout:5000,maximumAge:60000,enableHighAccuracy:false}
     );
   });
 }
