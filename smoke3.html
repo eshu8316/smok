@@ -406,6 +406,31 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:22px;height:22px;b
 /* Animations */
 @keyframes bnc{0%{transform:scale(1)}30%{transform:scale(1.28)}62%{transform:scale(.93)}80%{transform:scale(1.07)}100%{transform:scale(1)}}
 .ab{animation:bnc .38s cubic-bezier(.36,.07,.19,.97)}
+
+/* ════ 进度圆环 ════ */
+.ring-svg{position:absolute;top:-31px;left:-31px;pointer-events:none;z-index:1}
+.ring-bg{stroke:rgba(0,0,0,.07)}
+.ring-arc{stroke:var(--green);stroke-linecap:round;transition:stroke-dashoffset .5s cubic-bezier(.34,1.2,.64,1),stroke .3s}
+
+/* ════ 状态横幅 ════ */
+.status-banner{
+  margin:10px 20px 0;padding:11px 15px;border-radius:13px;
+  display:flex;align-items:center;gap:8px;
+  font-size:13px;font-weight:500;line-height:1.4;
+  transition:background .25s,color .25s;
+}
+.status-banner.neutral{background:rgba(142,142,147,.1);color:var(--label3)}
+.status-banner.good{background:rgba(52,199,89,.12);color:#1E9E45}
+.status-banner.warn{background:rgba(255,149,0,.12);color:#C07800}
+.status-banner.bad{background:rgba(255,59,48,.12);color:#D92B20}
+
+/* ════ Streak 徽章 ════ */
+.streak-badge{
+  background:rgba(255,149,0,.12);color:#C07800;
+  border-radius:20px;padding:6px 11px;
+  font-size:13px;font-weight:700;
+  display:none;align-items:center;gap:3px;
+}
 </style>
 </head>
 <body>
@@ -449,15 +474,27 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:22px;height:22px;b
         <div class="ht-name" id="hName">Hi，用户</div>
         <div class="ht-date" id="hDate"></div>
       </div>
-      <div class="cost-badge">
-        <div class="cb-num" id="todayCost">¥0.00</div>
-        <div class="cb-lbl">今日花费</div>
+      <div style="display:flex;gap:8px;align-items:flex-start">
+        <div class="streak-badge" id="streakBadge">
+          <span>🔥</span><span id="streakNum">0</span><span>天</span>
+        </div>
+        <div class="cost-badge">
+          <div class="cb-num" id="todayCost">¥0.00</div>
+          <div class="cb-lbl">今日花费</div>
+        </div>
       </div>
     </div>
 
     <div class="czone">
       <div class="cwrap">
         <div class="aura-ring"></div>
+        <!-- 进度圆环 -->
+        <svg class="ring-svg" width="250" height="250" viewBox="0 0 250 250">
+          <circle class="ring-bg" cx="125" cy="125" r="112" fill="none" stroke-width="7"/>
+          <circle class="ring-arc" id="ringArc" cx="125" cy="125" r="112" fill="none" stroke-width="7"
+            stroke-dasharray="704" stroke-dashoffset="704"
+            transform="rotate(-90 125 125)"/>
+        </svg>
         <button class="bigbtn" id="bigBtn" onclick="onSmoke()">
           <span class="bb-icon">🚬</span>
           <span class="bb-lbl">又抽一根</span>
@@ -479,6 +516,12 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:22px;height:22px;b
           <div class="ts-lbl">日均（根）</div>
         </div>
       </div>
+    </div>
+
+    <!-- 状态横幅 -->
+    <div class="status-banner neutral" id="statusBanner">
+      <span id="statusIcon">📝</span>
+      <span id="statusMsg">今天还没有记录</span>
     </div>
 
     <div class="proj-card">
@@ -572,6 +615,32 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:22px;height:22px;b
       <div class="sc-title">近 7 天</div>
       <div class="week-bars" id="weekBars"></div>
     </div>
+
+    <!-- 减烟成效 -->
+    <div class="section-card">
+      <div class="sc-title">减烟成效</div>
+      <div style="display:flex;text-align:center">
+        <div style="flex:1;padding:6px 0">
+          <div style="font-size:26px;font-weight:800;color:var(--smoke)" id="statStreak">0</div>
+          <div style="font-size:11px;color:var(--label3);margin-top:3px">当前连续达标</div>
+        </div>
+        <div style="flex:1;padding:6px 0;border-left:1px solid var(--sep)">
+          <div style="font-size:26px;font-weight:800;color:var(--smoke)" id="statLongest">0</div>
+          <div style="font-size:11px;color:var(--label3);margin-top:3px">最长连续达标</div>
+        </div>
+        <div style="flex:1;padding:6px 0;border-left:1px solid var(--sep)">
+          <div style="font-size:26px;font-weight:800;color:var(--green)" id="statControlled">0</div>
+          <div style="font-size:11px;color:var(--label3);margin-top:3px">累计达标天数</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 控烟里程碑 -->
+    <div class="section-card" style="margin-bottom:28px">
+      <div class="sc-title">控烟里程碑</div>
+      <div id="milestonesEl"></div>
+    </div>
+
   </div>
 
   <!-- Tab Bar -->
@@ -950,6 +1019,20 @@ function refreshHome(){
   document.getElementById('projBadge').textContent='基于'+Math.min(7,uniqueDays())+'天均值';
 
   renderRecent();
+  renderStatus();
+
+  // 圆环进度
+  const pct=td.length/Math.max(1,S.habit);
+  const ringColor=pct<1?'#34C759':pct===1?'#FF9500':'#FF3B30';
+  updateRing(pct,ringColor);
+
+  // Streak 徽章
+  const streak=calcStreak();
+  const sb=document.getElementById('streakBadge');
+  if(sb){
+    if(streak>0){document.getElementById('streakNum').textContent=streak;sb.style.display='flex';}
+    else sb.style.display='none';
+  }
 }
 
 function renderRecent(){
@@ -1037,6 +1120,16 @@ function renderStats(){
       <div class="wb-lbl" style="font-weight:${d.today?700:400}">${d.lbl}</div>
     </div>`;
   }).join('');
+
+  // 减烟成效
+  document.getElementById('statStreak').textContent=calcStreak();
+  document.getElementById('statLongest').textContent=calcLongestStreak();
+  document.getElementById('statControlled').textContent=calcControlledDays();
+
+  // 控烟里程碑
+  const firstLog=S.logs.length?S.logs.reduce((a,b)=>a.ts<b.ts?a:b):null;
+  const daysSince=firstLog?Math.floor((Date.now()-firstLog.ts)/86400000):0;
+  renderMilestones(daysSince);
 }
 
 // ─── Settings ────────────────────────────────────────────
@@ -1087,6 +1180,111 @@ function uniqueDays(){return new Set(S.logs.map(l=>dateKey(l.ts))).size;}
 function anim(el,cls){el.classList.remove(cls);void el.offsetWidth;el.classList.add(cls);el.addEventListener('animationend',()=>el.classList.remove(cls),{once:true});}
 let toastT;
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2800);}
+
+// ─── 进度圆环 ─────────────────────────────────────────────
+function updateRing(pct, color){
+  const arc=document.getElementById('ringArc');
+  if(!arc) return;
+  const total=704;
+  arc.style.strokeDashoffset=total*(1-Math.min(pct,1));
+  arc.style.stroke=color;
+}
+
+// ─── 状态横幅 ─────────────────────────────────────────────
+function renderStatus(){
+  const cnt=todayLogs().length;
+  const banner=document.getElementById('statusBanner');
+  const icon=document.getElementById('statusIcon');
+  const msg=document.getElementById('statusMsg');
+  if(!banner) return;
+  if(cnt===0){
+    banner.className='status-banner neutral';
+    icon.textContent='📝'; msg.textContent='今天还没有记录，随时点大圆开始';
+  } else if(cnt<S.habit){
+    banner.className='status-banner good';
+    icon.textContent='👍'; msg.textContent='比目标少抽了 '+(S.habit-cnt)+' 根，继续加油！';
+  } else if(cnt===S.habit){
+    banner.className='status-banner warn';
+    icon.textContent='⚠️'; msg.textContent='刚好达到今日目标，明天努力少一根';
+  } else {
+    banner.className='status-banner bad';
+    icon.textContent='😤'; msg.textContent='今日超出 '+(cnt-S.habit)+' 根，明天重新出发';
+  }
+}
+
+// ─── Streak ───────────────────────────────────────────────
+function getDayMap(){
+  const m={};
+  S.logs.forEach(l=>{const k=dateKey(l.ts);(m[k]=m[k]||[]).push(l);});
+  return m;
+}
+
+function calcStreak(){
+  const m=getDayMap();
+  let streak=0;
+  const d=new Date();
+  for(let i=0;i<365;i++){
+    const k=dateKey(d);
+    const logs=m[k];
+    if(!logs){if(i>0)break;}
+    else if(logs.length<=S.habit){streak++;}
+    else break;
+    d.setDate(d.getDate()-1);
+  }
+  return streak;
+}
+
+function calcLongestStreak(){
+  const m=getDayMap();
+  const keys=Object.keys(m).sort();
+  let longest=0,cur=0,prevDate=null;
+  keys.forEach(k=>{
+    if(m[k].length<=S.habit){
+      const d=new Date(k);
+      if(prevDate){
+        const diff=Math.round((d-prevDate)/86400000);
+        cur=diff===1?cur+1:1;
+      } else cur=1;
+      longest=Math.max(longest,cur);
+      prevDate=d;
+    } else {cur=0;prevDate=null;}
+  });
+  return longest;
+}
+
+function calcControlledDays(){
+  const m=getDayMap();
+  return Object.values(m).filter(logs=>logs.length<=S.habit).length;
+}
+
+// ─── 健康里程碑 ───────────────────────────────────────────
+const MILESTONES=[
+  {days:1, icon:'❤️', title:'第1天', desc:'血压和心率趋于正常'},
+  {days:3, icon:'💧', title:'第3天', desc:'尼古丁基本排出体外'},
+  {days:7, icon:'🫁', title:'第7天', desc:'肺部纤毛开始恢复功能'},
+  {days:14,icon:'🩸', title:'第14天',desc:'血液循环明显改善'},
+  {days:30,icon:'💨', title:'第1个月',desc:'肺功能提升约30%'},
+  {days:90,icon:'☁️', title:'第3个月',desc:'气管炎症减轻，呼吸顺畅'},
+];
+function renderMilestones(daysSince){
+  const el=document.getElementById('milestonesEl');
+  if(!el) return;
+  el.innerHTML=MILESTONES.map((m,i)=>{
+    const done=daysSince>=m.days;
+    const border=i<MILESTONES.length-1?'border-bottom:1px solid rgba(60,60,67,.07)':'';
+    return`<div style="display:flex;align-items:center;gap:12px;padding:11px 0;${border}">
+      <span style="font-size:22px;opacity:${done?1:.35}">${m.icon}</span>
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:600;color:${done?'var(--label)':'var(--label3)'}">${m.title}</div>
+        <div style="font-size:12px;color:var(--label3);margin-top:2px">${m.desc}</div>
+      </div>
+      ${done
+        ?'<span style="color:var(--green);font-size:17px">✅</span>'
+        :`<span style="font-size:11px;color:var(--label3);background:rgba(60,60,67,.08);padding:3px 8px;border-radius:10px">第${m.days}天</span>`
+      }
+    </div>`;
+  }).join('');
+}
 // ─── Firebase 配一根（真实联网）─────────────────────────────
 const FB_CONFIG = {
   apiKey: "AIzaSyCHR9uqzZ9RRPJ1F7BBlkbgjVTmKFVp3zk",
