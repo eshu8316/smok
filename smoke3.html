@@ -2,8 +2,15 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>抽了么</title>
+<meta name="description" content="诚实记录每一根烟，看清自己的烟草消费">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="抽了么">
+<meta name="theme-color" content="#FF6B00">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -20,6 +27,14 @@
 body{font-family:var(--font);background:#111;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
 
 .phone{width:390px;height:844px;background:var(--bg);border-radius:50px;overflow:hidden;position:relative;flex-shrink:0;box-shadow:0 0 0 12px #1a1a1a,0 0 0 14px #333,0 40px 100px rgba(0,0,0,.9)}
+
+/* 真机全屏 */
+@media (max-width:430px){
+  body{background:var(--bg);padding:0;align-items:flex-start}
+  .phone{width:100vw;height:100dvh;border-radius:0;box-shadow:none}
+  .screen{top:env(safe-area-inset-top);bottom:calc(54px + env(safe-area-inset-bottom))}
+  .tabbar{padding-bottom:env(safe-area-inset-bottom)}
+}
 .statusbar{height:50px;background:transparent;display:flex;align-items:flex-end;justify-content:space-between;padding:0 28px 8px;position:absolute;top:0;left:0;right:0;z-index:500}
 .notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:126px;height:34px;background:#111;border-radius:0 0 20px 20px;z-index:501}
 .stime{font-size:15px;font-weight:600;position:relative;z-index:502}
@@ -627,15 +642,33 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:22px;height:22px;b
 
 <script>
 // ─── State ───────────────────────────────────────────────
-let S = { name:'', price:25, packSize:20, habit:15,
-          logs:[] }; // {id, ts:Date, lat, lng, address}
+let S = { name:'', price:25, packSize:20, habit:15, logs:[] };
 
 let leafMap = null, mapInited = false;
 let currentLat = null, currentLng = null;
 let gpsAllowed = false;
+let fbListenerStarted = false;
 
-// ─── Clock ───────────────────────────────────────────────
-(()=>{const t=()=>{const n=new Date();document.getElementById('clk').textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');setTimeout(t,30000)};t()})();
+// ─── 数据持久化 ───────────────────────────────────────────
+function saveState(){
+  try{
+    localStorage.setItem('smokState', JSON.stringify({
+      name:S.name, price:S.price, packSize:S.packSize, habit:S.habit,
+      logs:S.logs.map(l=>({...l, ts:new Date(l.ts).toISOString()}))
+    }));
+  }catch(e){}
+}
+function loadState(){
+  try{
+    const raw=localStorage.getItem('smokState');
+    if(!raw) return false;
+    const d=JSON.parse(raw);
+    S.name=d.name||''; S.price=d.price||25;
+    S.packSize=d.packSize||20; S.habit=d.habit||15;
+    S.logs=(d.logs||[]).map(l=>({...l,ts:new Date(l.ts)}));
+    return !!S.name;
+  }catch(e){return false;}
+}
 
 // ─── GPS ─────────────────────────────────────────────────
 function initGPS(){
@@ -673,6 +706,15 @@ function chk(){document.getElementById('goBtn').disabled=document.getElementById
 
 function startApp(){
   S.name=document.getElementById('sName').value.trim();
+  saveState();
+  refreshAll();
+  goTab('home',document.querySelector('.tab'));
+  initGPS();
+  startFirebaseListener();
+}
+
+// ─── 启动时恢复数据 ───────────────────────────────────────
+if(loadState()){
   refreshAll();
   goTab('home',document.querySelector('.tab'));
   initGPS();
@@ -745,6 +787,7 @@ function onSmoke(){
   // 立即记录
   const entry={id:Date.now(),ts:new Date(),lat:currentLat,lng:currentLng,address:'定位中...',cost:S.price/S.packSize};
   S.logs.push(entry);
+  saveState();
   refreshHome();
   const td=todayLogs();
   showToast('✅ 已记录 · 今天第 '+td.length+' 根');
@@ -763,8 +806,8 @@ function onSmoke(){
       {headers:{'Accept-Language':'zh'},signal:ctrl.signal})
       .then(r=>r.json()).then(data=>{
         entry.address=data.address?.road||data.address?.suburb||data.address?.city_district||data.display_name?.split(',')[0]||entry.address;
-        refreshHome(); broadcastSmoke(entry.address);
-      }).catch(()=>{ broadcastSmoke(entry.address); });
+        saveState(); refreshHome(); broadcastSmoke(entry.address);
+      }).catch(()=>{ saveState(); broadcastSmoke(entry.address); });
   }
 
   if(currentLat&&currentLng){
@@ -818,6 +861,7 @@ function getMapClusters(){
 
 let mapMarkers=[];
 function refreshMapMarkers(){
+  if(!leafMap) return;
   mapMarkers.forEach(m=>leafMap.removeLayer(m));
   mapMarkers=[];
 
@@ -953,7 +997,7 @@ function renderLog(){
   }).join('');
 }
 
-function delLog(id){S.logs=S.logs.filter(l=>String(l.id)!==String(id));renderLog();refreshHome();showToast('已删除');}
+function delLog(id){S.logs=S.logs.filter(l=>String(l.id)!==String(id));saveState();renderLog();refreshHome();showToast('已删除');}
 
 // ─── Stats ───────────────────────────────────────────────
 function renderStats(){
@@ -1003,10 +1047,11 @@ function renderSettings(){
   document.getElementById('setH').textContent=S.habit;
   document.getElementById('setName').textContent=S.name;
 }
-function adjP(d){S.price=Math.max(5,Math.min(200,S.price+d));renderSettings();refreshHome();}
-function adjH(d){S.habit=Math.max(1,Math.min(80,S.habit+d));renderSettings();refreshHome();}
+function adjP(d){S.price=Math.max(5,Math.min(200,S.price+d));saveState();renderSettings();refreshHome();}
+function adjH(d){S.habit=Math.max(1,Math.min(80,S.habit+d));saveState();renderSettings();refreshHome();}
 function resetAll(){
   S={name:'',price:25,packSize:20,habit:15,logs:[]};
+  localStorage.removeItem('smokState');
   mapMarkers.forEach(m=>leafMap?.removeLayer(m));mapMarkers=[];
   document.getElementById('sName').value='';
   document.getElementById('goBtn').disabled=true;
@@ -1105,6 +1150,8 @@ function broadcastSmoke(address){
 
 // 启动监听：收到别人广播时弹信号卡
 function startFirebaseListener(){
+  if(fbListenerStarted) return;
+  fbListenerStarted=true;
   fbDb.ref('active_smokes').on('child_added', snap=>{
     const u=snap.val();
     if(!u || snap.key===MY_ID) return;           // 忽略自己
@@ -1166,6 +1213,7 @@ function acceptSignal(){
     cost: S.price / S.packSize
   };
   S.logs.push(entry);
+  saveState();
   refreshHome();
 
   // Match toast
