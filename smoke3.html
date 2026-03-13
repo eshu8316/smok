@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>抽了么</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#F2F2F7;--card:#fff;
+  --smoke:#FF6B00;--smoke2:#FF3B30;
+  --green:#34C759;--blue:#007AFF;
+  --label:#000;--label2:#3C3C43;--label3:#8E8E93;--sep:#E5E5EA;
+  --font:-apple-system,'SF Pro Display','PingFang SC','Helvetica Neue',sans-serif;
+}
+body{font-family:var(--font);background:#111;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+
+.phone{width:390px;height:844px;background:var(--bg);border-radius:50px;overflow:hidden;position:relative;flex-shrink:0;box-shadow:0 0 0 12px #1a1a1a,0 0 0 14px #333,0 40px 100px rgba(0,0,0,.9)}
+.statusbar{height:50px;background:transparent;display:flex;align-items:flex-end;justify-content:space-between;padding:0 28px 8px;position:absolute;top:0;left:0;right:0;z-index:500}
+.notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:126px;height:34px;background:#111;border-radius:0 0 20px 20px;z-index:501}
+.stime{font-size:15px;font-weight:600;position:relative;z-index:502}
+.sicons{display:flex;gap:5px;align-items:center;font-size:12px;position:relative;z-index:502}
+
+/* Screens */
+.screen{position:absolute;top:50px;left:0;right:0;bottom:54px;background:var(--bg);display:none;flex-direction:column;overflow-y:auto;overflow-x:hidden;animation:fi .2s ease}
+.screen.active{display:flex}
+#mapScreen{overflow:hidden;padding:0}
+@keyframes fi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+/* Tab bar */
+.tabbar{position:absolute;bottom:0;left:0;right:0;height:54px;background:rgba(255,255,255,.95);backdrop-filter:blur(20px);border-top:1px solid var(--sep);display:flex;z-index:300}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;border:none;background:none}
+.tab .ti{font-size:21px;line-height:1}
+.tab .tl{font-size:10px;color:var(--label3);font-weight:500}
+.tab.on .tl{color:var(--smoke)}
+
+/* ════ SETUP ════ */
+#setup{bottom:0;padding:0 28px 48px;align-items:center}
+.su-ic{width:90px;height:90px;border-radius:28px;background:linear-gradient(145deg,#FF9500,#FF3B30);display:flex;align-items:center;justify-content:center;font-size:48px;margin:36px auto 18px;box-shadow:0 8px 30px rgba(255,100,0,.4)}
+.su-title{font-size:28px;font-weight:800;margin-bottom:8px;text-align:center}
+.su-sub{font-size:14px;color:var(--label3);line-height:1.7;text-align:center;margin-bottom:28px}
+.fg{width:100%;margin-bottom:18px}
+.fl{font-size:12px;font-weight:600;color:var(--label3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px}
+.fi{width:100%;padding:13px 15px;border-radius:12px;border:1.5px solid var(--sep);background:var(--card);font-size:16px;font-family:var(--font);color:var(--label);outline:none;transition:border-color .2s}
+.fi:focus{border-color:var(--smoke)}
+.sl-row{display:flex;align-items:center;gap:12px}
+.sl-val{font-size:18px;font-weight:700;width:72px;flex-shrink:0}
+input[type=range]{flex:1;height:4px;appearance:none;border-radius:4px;background:var(--sep);outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.22)}
+.pack-row{display:flex;gap:10px}
+.pack-opt{flex:1;padding:11px 6px;border-radius:12px;border:2px solid var(--sep);background:var(--card);text-align:center;cursor:pointer;font-size:14px;font-weight:600;color:var(--label2);transition:all .15s}
+.pack-opt.on{border-color:var(--smoke);background:rgba(255,107,0,.06);color:var(--smoke)}
+.btn-go{width:100%;padding:17px;background:linear-gradient(135deg,#FF9500,#FF3B30);color:#fff;border:none;border-radius:14px;font-size:17px;font-weight:700;font-family:var(--font);cursor:pointer;box-shadow:0 6px 22px rgba(255,100,0,.38);transition:transform .12s cubic-bezier(.34,1.56,.64,1)}
+.btn-go:disabled{background:#C7C7CC;box-shadow:none;cursor:default}
+.btn-go:active:not(:disabled){transform:scale(.96)}
+
+/* ════ HOME ════ */
+#home{padding:0;background:var(--bg)}
+
+/* Header */
+.h-top{
+  padding:20px 22px 16px;
+  display:flex;justify-content:space-between;align-items:center;
+  background:var(--bg);
+}
+.ht-name{font-size:24px;font-weight:800;letter-spacing:-.3px;color:var(--label)}
+.ht-date{font-size:13px;color:var(--label3);margin-top:3px;font-weight:400}
+.cost-badge{
+  background:var(--card);border-radius:14px;
+  padding:10px 14px;text-align:right;
+  box-shadow:0 2px 10px rgba(0,0,0,.06);
+}
+.cb-num{font-size:20px;font-weight:800;color:var(--smoke);letter-spacing:-.5px;line-height:1}
+.cb-lbl{font-size:11px;color:var(--label3);margin-top:2px;font-weight:500}
+
+/* Big button zone */
+.czone{
+  display:flex;flex-direction:column;align-items:center;
+  padding:8px 0 20px;gap:20px;
+  background:var(--bg);
+}
+.cwrap{position:relative;display:flex;align-items:center;justify-content:center}
+.aura-ring{
+  position:absolute;inset:-16px;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,120,0,.14) 0%,transparent 70%);
+  pointer-events:none;
+  animation:auraPulse 3s ease-in-out infinite;
+}
+@keyframes auraPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+
+.bigbtn{
+  width:188px;height:188px;border-radius:50%;border:none;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  position:relative;overflow:hidden;user-select:none;
+  background:linear-gradient(150deg,#FFAA00,#FF4500);
+  box-shadow:0 12px 36px rgba(255,100,0,.38), 0 4px 12px rgba(255,100,0,.2), inset 0 1px 0 rgba(255,255,255,.15);
+  transition:transform .14s cubic-bezier(.34,1.56,.64,1),box-shadow .14s;
+}
+.bigbtn:active{transform:scale(.87);box-shadow:0 4px 14px rgba(255,100,0,.3)}
+.bb-icon{font-size:48px;position:relative;z-index:2;line-height:1;margin-bottom:2px}
+.bb-lbl{font-size:17px;font-weight:700;color:#fff;position:relative;z-index:2;letter-spacing:.2px}
+.bb-sub{font-size:12px;color:rgba(255,255,255,.75);position:relative;z-index:2;margin-top:1px}
+
+.rip{position:absolute;border-radius:50%;background:rgba(255,255,255,.25);transform:scale(0);animation:ripA .6s ease-out forwards;pointer-events:none}
+@keyframes ripA{to{transform:scale(4.5);opacity:0}}
+.pring{position:absolute;inset:0;border-radius:50%;border:3px solid #FFAA00;animation:prA .65s ease-out forwards;pointer-events:none}
+@keyframes prA{to{transform:scale(1.7);opacity:0}}
+
+/* Today inline stats */
+.today-strip{
+  display:flex;align-items:center;justify-content:center;gap:0;
+  background:var(--card);border-radius:16px;
+  margin:0 20px;padding:14px 0;
+  box-shadow:0 2px 12px rgba(0,0,0,.05);
+  width:calc(100% - 40px);
+}
+.ts-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}
+.ts-item+.ts-item{border-left:1px solid var(--sep)}
+.ts-val{font-size:22px;font-weight:800;line-height:1;letter-spacing:-.5px}
+.ts-lbl{font-size:11px;color:var(--label3);font-weight:500}
+
+/* Month projection card */
+.proj-card{
+  margin:12px 20px 0;
+  background:var(--card);border-radius:18px;
+  padding:18px 20px;
+  box-shadow:0 2px 12px rgba(0,0,0,.05);
+}
+.proj-main{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:14px}
+.proj-left{}
+.proj-hint{font-size:12px;color:var(--label3);font-weight:500;margin-bottom:4px}
+.proj-big{font-size:36px;font-weight:800;color:var(--smoke);letter-spacing:-1px;line-height:1}
+.proj-sub{font-size:12px;color:var(--label3);margin-top:5px}
+.proj-right{text-align:right}
+.proj-year{font-size:13px;font-weight:700;color:var(--smoke2)}
+.proj-year-lbl{font-size:11px;color:var(--label3);margin-top:2px}
+.proj-packs{font-size:13px;font-weight:600;color:var(--label2);margin-top:6px}
+.proj-packs-lbl{font-size:11px;color:var(--label3);margin-top:1px}
+.pbar-wrap{margin-top:4px}
+.pbar-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.pbar-title{font-size:12px;color:var(--label3);font-weight:500}
+.pbar-num{font-size:12px;font-weight:600;color:var(--label2)}
+.pbar-track{height:6px;background:var(--sep);border-radius:3px;overflow:hidden}
+.pbar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#FFAA00,#FF4500);transition:width .4s}
+
+/* Recent */
+.recent-hd{display:flex;justify-content:space-between;align-items:center;padding:18px 20px 8px}
+.rh-t{font-size:16px;font-weight:700}
+.rh-m{font-size:13px;color:var(--blue);cursor:pointer;font-weight:500}
+.smoke-list{padding:0 20px 28px;display:flex;flex-direction:column;gap:8px}
+.si{
+  background:var(--card);border-radius:14px;
+  padding:13px 16px;display:flex;align-items:center;gap:13px;
+  box-shadow:0 1px 6px rgba(0,0,0,.04);
+}
+.si-dot{
+  width:38px;height:38px;border-radius:12px;
+  background:linear-gradient(145deg,rgba(255,170,0,.15),rgba(255,69,0,.1));
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;flex-shrink:0;
+}
+.si-body{flex:1;min-width:0}
+.si-loc{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.si-meta{font-size:12px;color:var(--label3);margin-top:2px;display:flex;align-items:center;gap:6px}
+.si-cost{font-size:14px;font-weight:700;color:var(--smoke);flex-shrink:0}
+
+/* ════ MAP ════ */
+#mapEl{width:100%;height:100%}
+
+/* Leaflet custom marker */
+.smoke-marker{
+  display:flex;align-items:center;justify-content:center;
+  border-radius:50%;background:linear-gradient(145deg,#FF9500,#FF3B30);
+  color:#fff;font-weight:800;border:3px solid #fff;
+  box-shadow:0 4px 14px rgba(255,107,0,.55);
+  cursor:pointer;transition:transform .15s;font-family:var(--font);
+  line-height:1;
+}
+.smoke-marker:active{transform:scale(.9)}
+.smoke-marker .sm-count{font-size:inherit;font-weight:800}
+
+/* Map bottom sheet */
+.map-sheet{
+  position:absolute;bottom:0;left:0;right:0;z-index:400;
+  background:var(--card);border-radius:20px 20px 0 0;
+  padding:0 0 24px;
+  transform:translateY(100%);transition:transform .3s cubic-bezier(.34,1.1,.64,1);
+  max-height:60%;overflow-y:auto;
+}
+.map-sheet.open{transform:translateY(0)}
+.ms-handle{width:36px;height:4px;background:var(--sep);border-radius:2px;margin:10px auto 14px}
+.ms-head{display:flex;align-items:center;justify-content:space-between;padding:0 18px 10px}
+.ms-loc{font-size:17px;font-weight:700}
+.ms-close{width:28px;height:28px;border-radius:50%;background:rgba(120,120,128,.15);border:none;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center}
+.ms-total{font-size:13px;color:var(--label3);padding:0 18px 10px}
+.ms-rows{padding:0 16px}
+.ms-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(60,60,67,.07)}
+.ms-row:last-child{border-bottom:none}
+.ms-time{font-size:14px;font-weight:600;color:var(--label2);width:48px}
+.ms-date{font-size:13px;color:var(--label3);flex:1}
+.ms-c{font-size:13px;font-weight:600;color:var(--smoke)}
+
+/* Map top control */
+.map-topbar{
+  position:absolute;top:10px;left:16px;right:16px;z-index:400;
+  display:flex;gap:8px;pointer-events:none;
+}
+.map-stat-chip{
+  background:rgba(255,255,255,.94);backdrop-filter:blur(12px);
+  border-radius:20px;padding:8px 14px;box-shadow:0 2px 12px rgba(0,0,0,.15);
+  pointer-events:auto;
+}
+.msc-val{font-size:16px;font-weight:800;color:var(--smoke)}
+.msc-lbl{font-size:10px;color:var(--label3)}
+.map-locate-btn{
+  margin-left:auto;width:36px;height:36px;border-radius:50%;
+  background:rgba(255,255,255,.94);backdrop-filter:blur(12px);
+  border:none;cursor:pointer;font-size:18px;
+  box-shadow:0 2px 12px rgba(0,0,0,.15);
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:auto;
+}
+
+/* ════ LOG ════ */
+#log{padding:0}
+.log-head{padding:18px 22px 10px;display:flex;justify-content:space-between;align-items:center}
+.lh-title{font-size:26px;font-weight:700}
+.lh-sub{font-size:13px;color:var(--label3);margin-top:2px}
+.log-day{padding:0 20px 4px}
+.ld-lbl{font-size:12px;font-weight:600;color:var(--label3);text-transform:uppercase;letter-spacing:.4px;padding:8px 0 6px}
+.li{background:var(--card);border-radius:12px;padding:13px 15px;display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.li-num{width:28px;height:28px;border-radius:50%;background:rgba(255,107,0,.12);color:var(--smoke);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.li-info{flex:1}
+.li-loc{font-size:15px;font-weight:600}
+.li-meta{font-size:12px;color:var(--label3);margin-top:2px;display:flex;gap:8px}
+.li-coord{font-size:10px;color:var(--blue);margin-top:1px;cursor:pointer}
+.li-del{font-size:16px;cursor:pointer;color:var(--label3);padding:4px}
+
+/* ════ STATS ════ */
+#stats{padding:0}
+.st-head{padding:18px 22px 10px}
+.st-head h2{font-size:26px;font-weight:700}
+.month-card{margin:0 20px 14px;background:linear-gradient(135deg,#FF6B00,#FF3B30);border-radius:18px;padding:20px}
+.mc-lbl{font-size:13px;color:rgba(255,255,255,.8);margin-bottom:6px}
+.mc-amt{font-size:40px;font-weight:800;color:#fff;line-height:1}
+.mc-sub{font-size:13px;color:rgba(255,255,255,.75);margin-top:6px}
+.mc-split{display:flex;gap:0;margin-top:14px;border-top:1px solid rgba(255,255,255,.2);padding-top:14px}
+.mcs{flex:1;text-align:center}
+.mcs+.mcs{border-left:1px solid rgba(255,255,255,.2)}
+.mcs-val{font-size:20px;font-weight:700;color:#fff;line-height:1}
+.mcs-lbl{font-size:11px;color:rgba(255,255,255,.75);margin-top:3px}
+
+.section-card{background:var(--card);border-radius:16px;margin:0 20px 14px;padding:16px}
+.sc-title{font-size:15px;font-weight:700;margin-bottom:12px}
+.loc-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.loc-row:last-child{margin-bottom:0}
+.lr-ico{width:32px;text-align:center;font-size:16px}
+.lr-name{font-size:13px;font-weight:500;width:36px;flex-shrink:0}
+.lr-bar{flex:1;height:8px;background:var(--sep);border-radius:4px;overflow:hidden}
+.lr-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--smoke),var(--smoke2));transition:width .5s}
+.lr-cnt{font-size:12px;font-weight:600;width:24px;text-align:right}
+.hour-chart{display:flex;align-items:flex-end;gap:4px;height:64px}
+.hc-col{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1}
+.hc-bar{border-radius:3px 3px 0 0;width:100%;min-height:3px;background:linear-gradient(180deg,var(--smoke),var(--smoke2))}
+.hc-lbl{font-size:9px;color:var(--label3)}
+.week-bars{display:flex;align-items:flex-end;gap:8px;height:80px}
+.wb{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1}
+.wb-bar{border-radius:4px 4px 0 0;width:100%;min-height:4px;transition:height .4s}
+.wb-lbl{font-size:10px;color:var(--label3)}
+.wb-val{font-size:10px;font-weight:600}
+
+/* ════ SETTINGS ════ */
+#settings{padding:0}
+.se-head{padding:18px 22px 12px}
+.se-head h2{font-size:26px;font-weight:700}
+.se-body{padding:0 20px 48px;display:flex;flex-direction:column;gap:20px}
+.sec-t{font-size:12px;font-weight:600;color:var(--label3);text-transform:uppercase;letter-spacing:.5px;padding:0 4px;margin-bottom:7px}
+.sec-c{background:var(--card);border-radius:14px;overflow:hidden}
+.sec-r{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(60,60,67,.08);font-size:15px}
+.sec-r:last-child{border-bottom:none}
+.sr-l{color:var(--label)}
+.sr-r{color:var(--label3);font-size:14px;display:flex;align-items:center;gap:8px}
+.stb{width:28px;height:28px;border-radius:50%;background:var(--smoke);color:#fff;border:none;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700}
+.stb.m{background:rgba(120,120,128,.14);color:var(--label)}
+.toggle{position:relative;width:50px;height:30px;cursor:pointer}
+.toggle input{opacity:0;width:0;height:0}
+.tt{position:absolute;inset:0;background:#E5E5EA;border-radius:15px;transition:background .2s}
+.toggle input:checked+.tt{background:var(--green)}
+.th{position:absolute;top:3px;left:3px;width:24px;height:24px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+.toggle input:checked~.th{transform:translateX(20px)}
+.btn-del{width:100%;padding:14px;background:rgba(255,59,48,.08);color:var(--smoke2);border:none;border-radius:14px;font-size:15px;font-weight:500;font-family:var(--font);cursor:pointer}
+
+/* ════ 配一根 incoming signal ════ */
+.pei-live{width:8px;height:8px;border-radius:50%;background:#FF3B30;animation:liveBlink 1.2s ease-in-out infinite;flex-shrink:0}
+@keyframes liveBlink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+
+/* ════ 配一根 incoming card ════ */
+/* Broadcast indicator (tiny, on big button) */
+.broadcast-hint{
+  position:absolute;bottom:-28px;left:50%;transform:translateX(-50%);
+  white-space:nowrap;font-size:11px;color:var(--label3);
+  display:flex;align-items:center;gap:5px;
+  animation:fadeHint 3s ease forwards;
+  pointer-events:none;
+}
+@keyframes fadeHint{0%{opacity:0;transform:translateX(-50%) translateY(4px)}15%{opacity:1;transform:translateX(-50%) translateY(0)}80%{opacity:1}100%{opacity:0}}
+
+/* Incoming signal — slides in from top */
+.signal-card{
+  position:absolute;top:58px;left:16px;right:16px;z-index:450;
+  background:rgba(28,28,30,.97);
+  border:1px solid rgba(255,107,0,.35);
+  border-radius:20px;padding:16px;
+  display:flex;gap:14px;align-items:flex-start;
+  box-shadow:0 8px 32px rgba(0,0,0,.5);
+  transform:translateY(-120%);transition:transform .4s cubic-bezier(.34,1.15,.64,1);
+  backdrop-filter:blur(20px);
+}
+.signal-card.visible{transform:translateY(0)}
+.signal-card.hiding{transform:translateY(-130%);transition:transform .3s ease-in}
+
+.sc-left{display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0}
+.sc-avatar{
+  width:46px;height:46px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:24px;
+  border:2px solid rgba(255,107,0,.4);
+  background:rgba(255,107,0,.12);
+}
+.sc-dist{font-size:10px;color:rgba(255,149,0,.9);font-weight:600}
+
+.sc-body{flex:1}
+.sc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px}
+.sc-name{font-size:15px;font-weight:700;color:#fff}
+.sc-time{font-size:11px;color:rgba(255,255,255,.35)}
+.sc-loc{font-size:13px;color:rgba(255,255,255,.55);margin-bottom:10px;display:flex;align-items:center;gap:4px}
+.sc-smoke-dot{width:7px;height:7px;border-radius:50%;background:var(--smoke);animation:liveBlink 1s infinite;flex-shrink:0}
+.sc-actions{display:flex;gap:8px}
+.sc-yes{
+  flex:1;padding:10px;border:none;border-radius:11px;
+  background:linear-gradient(135deg,#FF9500,#FF3B30);color:#fff;
+  font-size:14px;font-weight:700;font-family:var(--font);cursor:pointer;
+  transition:transform .12s cubic-bezier(.34,1.56,.64,1);
+  box-shadow:0 3px 12px rgba(255,107,0,.4);
+}
+.sc-yes:active{transform:scale(.93)}
+.sc-no{
+  padding:10px 16px;border:none;border-radius:11px;
+  background:rgba(255,255,255,.08);color:rgba(255,255,255,.5);
+  font-size:14px;font-weight:600;font-family:var(--font);cursor:pointer;
+}
+.sc-no:active{background:rgba(255,255,255,.14)}
+
+/* Progress bar — auto dismiss */
+.sc-progress{
+  height:2px;background:rgba(255,255,255,.08);border-radius:1px;
+  margin-top:10px;overflow:hidden;
+}
+.sc-progress-fill{
+  height:100%;background:rgba(255,107,0,.5);border-radius:1px;
+  width:100%;
+}
+
+/* Matched toast card */
+.match-toast{
+  position:absolute;bottom:66px;left:16px;right:16px;z-index:450;
+  background:linear-gradient(135deg,rgba(28,58,28,.97),rgba(13,43,13,.97));
+  border:1px solid rgba(52,199,89,.35);border-radius:18px;
+  padding:15px 18px;display:flex;align-items:center;gap:12px;
+  box-shadow:0 6px 28px rgba(0,0,0,.4);
+  animation:matchPop .42s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes matchPop{from{opacity:0;transform:scale(.88) translateY(12px)}to{opacity:1;transform:none}}
+.mt-icon{font-size:28px}
+.mt-info{flex:1}
+.mt-title{font-size:14px;font-weight:700;color:#fff}
+.mt-sub{font-size:12px;color:rgba(255,255,255,.5);margin-top:2px}
+.mt-close{color:rgba(255,255,255,.35);font-size:18px;cursor:pointer;padding:4px}
+
+/* Toast */
+.toast{position:absolute;bottom:68px;left:50%;transform:translateX(-50%);background:#1C1C1E;color:#fff;border-radius:12px;padding:12px 20px;font-size:14px;font-weight:500;white-space:nowrap;z-index:600;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(-6px)}
+
+/* GPS indicator */
+.gps-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:5px;animation:gpsBlink 1.5s ease-in-out infinite}
+@keyframes gpsBlink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* Animations */
+@keyframes bnc{0%{transform:scale(1)}30%{transform:scale(1.28)}62%{transform:scale(.93)}80%{transform:scale(1.07)}100%{transform:scale(1)}}
+.ab{animation:bnc .38s cubic-bezier(.36,.07,.19,.97)}
+</style>
+</head>
+<body>
+<div class="phone">
+  <!-- Status bar -->
+  <div class="statusbar">
+    <div class="notch"></div>
+    <span class="stime" id="clk" style="color:#000">9:41</span>
+    <div class="sicons" style="color:#000"><span>●●●</span><span>WiFi</span><span>🔋</span></div>
+  </div>
+
+  <!-- ════ SETUP ════ -->
+  <div class="screen active" id="setup">
+    <div class="su-ic">🚬</div>
+    <div class="su-title">抽了么</div>
+    <div class="su-sub">诚实记录每一根<br>你会被自己的数据说服的</div>
+
+    <div class="fg"><div class="fl">你叫什么</div>
+      <input class="fi" id="sName" placeholder="输入名字" oninput="chk()"></div>
+
+    <div class="fg"><div class="fl">一包多少钱（元）</div>
+      <div class="sl-row">
+        <span class="sl-val" id="pDisp" style="color:var(--smoke)">¥ 25</span>
+        <input type="range" min="5" max="100" value="25" style="accent-color:var(--smoke)" oninput="S.price=+this.value;document.getElementById('pDisp').textContent='¥ '+this.value;chk()">
+      </div></div>
+
+    <div class="fg"><div class="fl">一包几根</div>
+      <div class="pack-row" id="packRow">
+        <div class="pack-opt on" onclick="selPack(this,20)">20 根</div>
+        <div class="pack-opt" onclick="selPack(this,16)">16 根</div>
+        <div class="pack-opt" onclick="selPack(this,10)">10 根</div>
+        <div class="pack-opt" onclick="selPack(this,12)">12 根</div>
+      </div></div>
+
+    <div class="fg"><div class="fl">每天大概抽几根</div>
+      <div class="sl-row">
+        <span class="sl-val" id="hDisp" style="color:var(--label2)">15 根</span>
+        <input type="range" min="1" max="60" value="15" style="accent-color:var(--label3)" oninput="S.habit=+this.value;document.getElementById('hDisp').textContent=this.value+' 根'">
+      </div></div>
+
+    <button class="btn-go" id="goBtn" onclick="startApp()" disabled>开始记录</button>
+  </div>
+
+  <!-- ════ HOME ════ -->
+  <div class="screen" id="home">
+    <div class="h-top">
+      <div>
+        <div class="ht-name" id="hName">Hi，用户</div>
+        <div class="ht-date" id="hDate"></div>
+      </div>
+      <div class="cost-badge">
+        <div class="cb-num" id="todayCost">¥0.00</div>
+        <div class="cb-lbl">今日花费</div>
+      </div>
+    </div>
+
+    <div class="czone">
+      <div class="cwrap">
+        <div class="aura-ring"></div>
+        <button class="bigbtn" id="bigBtn" onclick="onSmoke()">
+          <span class="bb-icon">🚬</span>
+          <span class="bb-lbl">又抽一根</span>
+          <span class="bb-sub" id="bbSub">今天第 0 根</span>
+        </button>
+      </div>
+
+      <div class="today-strip">
+        <div class="ts-item">
+          <div class="ts-val" id="todayCount">0</div>
+          <div class="ts-lbl">今日已抽（根）</div>
+        </div>
+        <div class="ts-item">
+          <div class="ts-val" id="todayCost2">¥0.00</div>
+          <div class="ts-lbl">今日花费</div>
+        </div>
+        <div class="ts-item">
+          <div class="ts-val" id="todayAvg">-</div>
+          <div class="ts-lbl">日均（根）</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="proj-card">
+      <div class="proj-main">
+        <div class="proj-left">
+          <div class="proj-hint">这个月预计花</div>
+          <div class="proj-big" id="projM">¥0</div>
+          <div class="proj-sub" id="projBadge">估算中</div>
+        </div>
+        <div class="proj-right">
+          <div class="proj-year" id="projY">¥0</div>
+          <div class="proj-year-lbl">预计年花费</div>
+          <div class="proj-packs" id="projP">0 包</div>
+          <div class="proj-packs-lbl">月均包数</div>
+        </div>
+      </div>
+      <div class="pbar-wrap">
+        <div class="pbar-top">
+          <div class="pbar-title">今日进度</div>
+          <div class="pbar-num" id="pbarLbl">0 / 15 根</div>
+        </div>
+        <div class="pbar-track"><div class="pbar-fill" id="pbarFill" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <div class="recent-hd">
+      <div class="rh-t">最近记录</div>
+      <div class="rh-m" onclick="goTab('log',document.querySelectorAll('.tab')[2])">全部 ›</div>
+    </div>
+    <div class="smoke-list" id="recentList">
+      <div style="text-align:center;padding:18px;color:var(--label3);font-size:14px">还没有记录，点大圆开始</div>
+    </div>
+  </div>
+
+  <!-- ════ MAP ════ -->
+  <div class="screen" id="mapScreen">
+    <div id="mapEl"></div>
+    <!-- Top overlay -->
+    <div class="map-topbar">
+      <div class="map-stat-chip">
+        <div class="msc-val" id="mapTotal">0</div>
+        <div class="msc-lbl">总记录</div>
+      </div>
+      <div class="map-stat-chip">
+        <div class="msc-val" id="mapSpots">0</div>
+        <div class="msc-lbl">地点数</div>
+      </div>
+      <button class="map-locate-btn" onclick="locateMe()" title="定位">📍</button>
+    </div>
+    <!-- Bottom detail sheet -->
+    <div class="map-sheet" id="mapSheet">
+      <div class="ms-handle"></div>
+      <div class="ms-head">
+        <div class="ms-loc" id="msLoc">地点</div>
+        <button class="ms-close" onclick="closeSheet()">✕</button>
+      </div>
+      <div class="ms-total" id="msTotal"></div>
+      <div class="ms-rows" id="msRows"></div>
+    </div>
+  </div>
+
+  <!-- ════ LOG ════ -->
+  <div class="screen" id="log">
+    <div class="log-head">
+      <div>
+        <div class="lh-title">全部记录</div>
+        <div class="lh-sub" id="logSub">今日 0 根 · ¥0.00</div>
+      </div>
+    </div>
+    <div id="logList" style="padding:0 20px 24px"></div>
+  </div>
+
+  <!-- ════ STATS ════ -->
+  <div class="screen" id="stats">
+    <div class="st-head"><h2>消费报告</h2></div>
+    <div class="month-card">
+      <div class="mc-lbl">本月实际花费</div>
+      <div class="mc-amt" id="mcAmt">¥0</div>
+      <div class="mc-sub" id="mcSub">共抽 0 根 · 0 包</div>
+      <div class="mc-split">
+        <div class="mcs"><div class="mcs-val" id="mcD">¥0</div><div class="mcs-lbl">日均</div></div>
+        <div class="mcs"><div class="mcs-val" id="mcY">¥0</div><div class="mcs-lbl">年化</div></div>
+        <div class="mcs"><div class="mcs-val" id="mcPer">¥0</div><div class="mcs-lbl">每根</div></div>
+      </div>
+    </div>
+    <div class="section-card">
+      <div class="sc-title">抽烟最多的时段</div>
+      <div class="hour-chart" id="hourChart"></div>
+    </div>
+    <div class="section-card">
+      <div class="sc-title">近 7 天</div>
+      <div class="week-bars" id="weekBars"></div>
+    </div>
+  </div>
+
+  <!-- Tab Bar -->
+  <div class="tabbar">
+    <button class="tab on"  onclick="goTab('home',this)">      <span class="ti">🏠</span><span class="tl">首页</span></button>
+    <button class="tab"     onclick="goTab('mapScreen',this)"> <span class="ti">🗺️</span><span class="tl">地图</span></button>
+    <button class="tab"     onclick="goTab('log',this)">       <span class="ti">📋</span><span class="tl">记录</span></button>
+    <button class="tab"     onclick="goTab('stats',this)">     <span class="ti">💰</span><span class="tl">消费</span></button>
+    <button class="tab"     onclick="goTab('settings',this)">  <span class="ti">⚙️</span><span class="tl">设置</span></button>
+  </div>
+
+  <!-- Settings (inside phone) -->
+  <div class="screen" id="settings">
+    <div class="se-head"><h2>设置</h2></div>
+    <div class="se-body">
+      <div><div class="sec-t">烟价</div>
+        <div class="sec-c">
+          <div class="sec-r"><span class="sr-l">每包价格</span>
+            <span class="sr-r"><button class="stb m" onclick="adjP(-1)">－</button><strong id="setP">¥25</strong><button class="stb" onclick="adjP(1)">＋</button></span></div>
+          <div class="sec-r"><span class="sr-l">每包根数</span><span class="sr-r" id="setPS">20根</span></div>
+          <div class="sec-r"><span class="sr-l">每根成本</span><span class="sr-r" id="setPC">¥1.25</span></div>
+        </div></div>
+      <div><div class="sec-t">习惯量</div>
+        <div class="sec-c">
+          <div class="sec-r"><span class="sr-l">每日习惯量</span>
+            <span class="sr-r"><button class="stb m" onclick="adjH(-1)">－</button><strong id="setH">15</strong>根<button class="stb" onclick="adjH(1)">＋</button></span></div>
+        </div></div>
+      <div><div class="sec-t">定位</div>
+        <div class="sec-c">
+          <div class="sec-r"><span class="sr-l">自动记录位置</span>
+            <label class="toggle"><input type="checkbox" checked id="gpsToggle"><div class="tt"></div><div class="th"></div></label></div>
+          <div class="sec-r"><span class="sr-l">GPS 状态</span><span class="sr-r" id="gpsStatus">检测中...</span></div>
+        </div></div>
+      <div><div class="sec-t">关于</div>
+        <div class="sec-c">
+          <div class="sec-r"><span class="sr-l">用户</span><span class="sr-r" id="setName">-</span></div>
+          <div class="sec-r"><span class="sr-l">数据存储</span><span class="sr-r">仅本地</span></div>
+        </div></div>
+      <button class="btn-del" onclick="resetAll()">🗑 清除所有数据</button>
+    </div>
+  </div>
+
+  <!-- Incoming signal card (slides from top) -->
+  <div class="signal-card" id="signalCard">
+    <div class="sc-left">
+      <div class="sc-avatar" id="scAvatar">🧔</div>
+      <div class="sc-dist" id="scDist">38m</div>
+    </div>
+    <div class="sc-body">
+      <div class="sc-top">
+        <div class="sc-name" id="scName">老王</div>
+        <div class="sc-time" id="scTime">刚刚</div>
+      </div>
+      <div class="sc-loc">
+        <div class="sc-smoke-dot"></div>
+        <span id="scLoc">正在公司楼下抽烟</span>
+      </div>
+      <div class="sc-actions">
+        <button class="sc-yes" id="scYes" onclick="acceptSignal()">🚬 去配一根</button>
+        <button class="sc-no" onclick="dismissSignal()">算了</button>
+      </div>
+      <div class="sc-progress"><div class="sc-progress-fill" id="scProgressFill"></div></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────
+let S = { name:'', price:25, packSize:20, habit:15,
+          logs:[] }; // {id, ts:Date, lat, lng, address}
+
+let leafMap = null, mapInited = false;
+let currentLat = null, currentLng = null;
+let gpsAllowed = false;
+
+// ─── Clock ───────────────────────────────────────────────
+(()=>{const t=()=>{const n=new Date();document.getElementById('clk').textContent=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');setTimeout(t,30000)};t()})();
+
+// ─── GPS ─────────────────────────────────────────────────
+function initGPS(){
+  if(!navigator.geolocation){setGPSStatus('不支持');return}
+  navigator.geolocation.getCurrentPosition(pos=>{
+    currentLat=pos.coords.latitude; currentLng=pos.coords.longitude;
+    gpsAllowed=true; setGPSStatus('✅ 已启用');
+  },err=>{
+    gpsAllowed=false; setGPSStatus('❌ 已拒绝');
+    console.log('GPS denied, using demo coords');
+  },{timeout:8000});
+}
+function setGPSStatus(s){
+  const el=document.getElementById('gpsStatus');
+  if(el) el.textContent=s;
+}
+function getPos(){
+  return new Promise(res=>{
+    if(!gpsAllowed||!document.getElementById('gpsToggle').checked){res(null);return}
+    navigator.geolocation.getCurrentPosition(
+      p=>res({lat:p.coords.latitude,lng:p.coords.longitude}),
+      ()=>res(null),{timeout:6000,maximumAge:30000}
+    );
+  });
+}
+
+// ─── Setup ───────────────────────────────────────────────
+function selPack(el,v){S.packSize=v;document.querySelectorAll('.pack-opt').forEach(e=>e.classList.remove('on'));el.classList.add('on');}
+function chk(){document.getElementById('goBtn').disabled=document.getElementById('sName').value.trim().length<1}
+
+function startApp(){
+  S.name=document.getElementById('sName').value.trim();
+  injectDemoData();
+  refreshAll();
+  goTab('home',document.querySelector('.tab'));
+  initGPS();
+  startFirebaseListener();
+}
+
+// ─── Demo data (realistic GPS clusters) ──────────────────
+function injectDemoData(){
+  // Use Shanghai coords as demo center, spread across a few locations
+  const clusters=[
+    {lat:31.2304,lng:121.4737,name:'公司',weight:0.35},
+    {lat:31.2180,lng:121.4590,name:'家',weight:0.25},
+    {lat:31.2350,lng:121.4800,name:'餐厅',weight:0.15},
+    {lat:31.2260,lng:121.4680,name:'便利店门口',weight:0.12},
+    {lat:31.2290,lng:121.4810,name:'地铁口',weight:0.08},
+    {lat:31.2400,lng:121.4650,name:'公园',weight:0.05},
+  ];
+  const now=new Date();
+  for(let d=6;d>=0;d--){
+    const day=new Date(now); day.setDate(day.getDate()-d);
+    const n=Math.round(S.habit*0.5+Math.random()*S.habit*0.7);
+    for(let i=0;i<n;i++){
+      // pick cluster by weight
+      let r=Math.random(), cl=clusters[clusters.length-1];
+      let acc=0; for(const c of clusters){acc+=c.weight;if(r<acc){cl=c;break;}}
+      const t=new Date(day); t.setHours(7+Math.floor(Math.random()*15),Math.floor(Math.random()*60));
+      // jitter within ~30m
+      const jLat=(Math.random()-.5)*0.0003;
+      const jLng=(Math.random()-.5)*0.0003;
+      S.logs.push({
+        id:Date.now()+Math.random(),
+        ts:t,
+        lat:cl.lat+jLat,
+        lng:cl.lng+jLng,
+        address:cl.name,
+        cost:S.price/S.packSize
+      });
+    }
+  }
+}
+
+// ─── Navigation ──────────────────────────────────────────
+function goTab(id,btn){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById(id).classList.add('active');
+  if(btn) btn.classList.add('on');
+  if(id==='mapScreen') initMap();
+  if(id==='log')       renderLog();
+  if(id==='stats')     renderStats();
+  if(id==='settings')  renderSettings();
+}
+
+// ─── Smoke ───────────────────────────────────────────────
+async function onSmoke(){
+  // ripple + pulse
+  const b=document.getElementById('bigBtn');
+  const r=document.createElement('div');r.className='rip';
+  r.style.cssText=`width:${b.offsetWidth}px;height:${b.offsetHeight}px;left:0;top:0`;
+  b.appendChild(r);r.addEventListener('animationend',()=>r.remove());
+  const cw=document.querySelector('.cwrap');
+  for(let i=0;i<3;i++)setTimeout(()=>{
+    const p=document.createElement('div');p.className='pring';
+    p.style.cssText='width:200px;height:200px;position:absolute';
+    cw.appendChild(p);p.addEventListener('animationend',()=>p.remove());
+  },i*110);
+  playTone(360);playTone(480,.08);
+  anim(b,'ab');
+
+  // get position
+  showToast('📍 正在获取位置...');
+  const pos = await getPos();
+  let lat=pos?pos.lat:null, lng=pos?pos.lng:null;
+  let address='未知位置';
+
+  if(lat&&lng){
+    currentLat=lat; currentLng=lng;
+    // reverse geocode via Nominatim
+    try{
+      const res=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lng=${lng}&format=json&addressdetails=1`,{headers:{'Accept-Language':'zh'}});
+      const data=await res.json();
+      address=data.address?.road||data.address?.suburb||data.address?.city_district||data.display_name?.split(',')[0]||'当前位置';
+    }catch(e){ address='当前位置'; }
+  } else {
+    // demo fallback
+    lat=31.2304+(Math.random()-.5)*0.005;
+    lng=121.4737+(Math.random()-.5)*0.005;
+    address='当前位置（演示）';
+    showToast('⚠️ 未获取到GPS，使用演示坐标');
+  }
+
+  const entry={id:Date.now(),ts:new Date(),lat,lng,address,cost:S.price/S.packSize};
+  S.logs.push(entry);
+  refreshHome();
+  const td=todayLogs();
+  showToast('✅ 记录于 '+address+' · 今天第 '+td.length+' 根');
+  broadcastSmoke(address);
+
+  // refresh map if visible
+  if(document.getElementById('mapScreen').classList.contains('active')) refreshMapMarkers();
+}
+
+// ─── Map ─────────────────────────────────────────────────
+function initMap(){
+  if(!mapInited){
+    leafMap=L.map('mapEl',{zoomControl:false});
+    // CartoDB light tiles (no API key)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+      attribution:'© OSM © CartoDB', maxZoom:19
+    }).addTo(leafMap);
+    L.control.zoom({position:'bottomright'}).addTo(leafMap);
+    mapInited=true;
+  }
+  setTimeout(()=>{
+    leafMap.invalidateSize();
+    refreshMapMarkers();
+  },80);
+}
+
+function getMapClusters(){
+  // Group logs within ~50m (round to 3 decimal ≈ 111m; use 4 decimal ≈ 11m)
+  const groups={};
+  S.logs.filter(l=>l.lat).forEach(l=>{
+    const key=Math.round(l.lat*3000)/3000+','+Math.round(l.lng*3000)/3000;
+    if(!groups[key]) groups[key]={lat:l.lat,lng:l.lng,logs:[],address:l.address};
+    groups[key].logs.push(l);
+  });
+  return Object.values(groups);
+}
+
+let mapMarkers=[];
+function refreshMapMarkers(){
+  mapMarkers.forEach(m=>leafMap.removeLayer(m));
+  mapMarkers=[];
+
+  const clusters=getMapClusters();
+  if(!clusters.length) return;
+
+  document.getElementById('mapTotal').textContent=S.logs.filter(l=>l.lat).length;
+  document.getElementById('mapSpots').textContent=clusters.length;
+
+  clusters.forEach(cl=>{
+    const n=cl.logs.length;
+    const size=Math.min(56,Math.max(30,20+n*3));
+    const fontSize=size>40?14:12;
+
+    const icon=L.divIcon({
+      className:'',
+      html:`<div class="smoke-marker" style="width:${size}px;height:${size}px;font-size:${fontSize}px"><span class="sm-count">${n}</span></div>`,
+      iconSize:[size,size],
+      iconAnchor:[size/2,size/2],
+    });
+
+    const marker=L.marker([cl.lat,cl.lng],{icon}).addTo(leafMap);
+    marker.on('click',()=>showClusterSheet(cl));
+    mapMarkers.push(marker);
+  });
+
+  // fit bounds
+  const coords=clusters.map(c=>[c.lat,c.lng]);
+  if(coords.length>1) leafMap.fitBounds(coords,{padding:[40,40]});
+  else if(coords.length===1) leafMap.setView(coords[0],15);
+}
+
+function showClusterSheet(cl){
+  const sorted=[...cl.logs].sort((a,b)=>b.ts-a.ts);
+  document.getElementById('msLoc').textContent='📍 '+cl.address;
+  document.getElementById('msTotal').textContent='共 '+cl.logs.length+' 根 · 花了 ¥'+(cl.logs.reduce((a,l)=>a+l.cost,0)).toFixed(2);
+  document.getElementById('msRows').innerHTML=sorted.slice(0,20).map(l=>{
+    const d=l.ts;
+    const dateStr=[(d.getMonth()+1)+'月'+d.getDate()+'日','周日','周一','周二','周三','周四','周五','周六'][d.getDay()+1]||'';
+    const dow=['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
+    return`<div class="ms-row">
+      <span class="ms-time">${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}</span>
+      <span class="ms-date">${(d.getMonth()+1)}月${d.getDate()}日 ${dow}</span>
+      <span class="ms-c">¥${l.cost.toFixed(2)}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('mapSheet').classList.add('open');
+}
+
+function closeSheet(){ document.getElementById('mapSheet').classList.remove('open'); }
+
+function locateMe(){
+  if(currentLat&&currentLng){ leafMap.flyTo([currentLat,currentLng],16,{duration:1.2}); return; }
+  navigator.geolocation?.getCurrentPosition(p=>{
+    currentLat=p.coords.latitude; currentLng=p.coords.longitude;
+    leafMap.flyTo([currentLat,currentLng],16,{duration:1.2});
+  },()=>showToast('❌ 无法获取当前位置'));
+}
+
+// ─── Home ────────────────────────────────────────────────
+function refreshHome(){
+  document.getElementById('hName').textContent='Hi，'+S.name;
+  const n=new Date();
+  document.getElementById('hDate').textContent=
+    (n.getMonth()+1)+'月'+n.getDate()+'日 '+['周日','周一','周二','周三','周四','周五','周六'][n.getDay()];
+
+  const td=todayLogs();
+  const spent=td.length*perCig();
+  document.getElementById('todayCost').textContent='¥'+spent.toFixed(2);
+  document.getElementById('todayCost2').textContent='¥'+spent.toFixed(2);
+  document.getElementById('todayCount').textContent=td.length;
+  const avg=calcAvg();
+  document.getElementById('todayAvg').textContent=avg>0?avg.toFixed(1):'-';
+  document.getElementById('bbSub').textContent='今天第 '+td.length+' 根';
+
+  const pct=Math.min(100,td.length/Math.max(1,S.habit)*100);
+  document.getElementById('pbarFill').style.width=pct+'%';
+  document.getElementById('pbarLbl').textContent=td.length+' / '+S.habit+' 根';
+
+  const mth=Math.round(avg*30*perCig());
+  const yr=Math.round(avg*365*perCig());
+  const packs=Math.round(avg*30/S.packSize);
+  document.getElementById('projM').textContent='¥'+mth;
+  document.getElementById('projY').textContent='¥'+yr;
+  document.getElementById('projP').textContent=packs+' 包';
+  document.getElementById('projBadge').textContent='基于'+Math.min(7,uniqueDays())+'天均值';
+
+  renderRecent();
+}
+
+function renderRecent(){
+  const el=document.getElementById('recentList');
+  const td=[...todayLogs()].reverse().slice(0,4);
+  if(!td.length){el.innerHTML='<div style="text-align:center;padding:18px;color:var(--label3);font-size:14px">还没有记录，点大圆开始</div>';return;}
+  el.innerHTML=td.map(l=>`<div class="si">
+    <div class="si-dot">🚬</div>
+    <div class="si-body">
+      <div class="si-loc">${l.address||'未知位置'}</div>
+      <div class="si-meta">${fmtTime(l.ts)}${l.lat?` · <span style="color:var(--blue);cursor:pointer" onclick="flyTo(${l.lat},${l.lng})">📍查看</span>`:''}</div>
+    </div>
+    <div class="si-cost">¥${l.cost.toFixed(2)}</div>
+  </div>`).join('');
+}
+
+function flyTo(lat,lng){
+  goTab('mapScreen',document.querySelectorAll('.tab')[1]);
+  setTimeout(()=>leafMap.flyTo([lat,lng],17,{duration:1.2}),200);
+}
+
+// ─── Log ─────────────────────────────────────────────────
+function renderLog(){
+  const td=todayLogs();
+  document.getElementById('logSub').textContent='今日 '+td.length+' 根 · ¥'+(td.length*perCig()).toFixed(2);
+  const groups={};
+  [...S.logs].reverse().forEach(l=>{const k=dateKey(l.ts);(groups[k]=groups[k]||[]).push(l);});
+  const el=document.getElementById('logList');
+  const days=Object.keys(groups).sort().reverse();
+  if(!days.length){el.innerHTML='<div style="text-align:center;padding:40px;color:var(--label3)">还没有记录</div>';return;}
+  el.innerHTML=days.map(dk=>{
+    const logs=groups[dk];
+    const [,m,d]=dk.split('-');
+    const lbl=dk===dateKey(new Date())?'今天 — '+m+'月'+d+'日':m+'月'+d+'日';
+    const items=logs.map((l,i)=>`<div class="li">
+      <div class="li-num">${logs.length-i}</div>
+      <div class="li-info">
+        <div class="li-loc">🚬 ${l.address||'未知位置'}</div>
+        <div class="li-meta"><span>${fmtTime(l.ts)}</span><span>¥${l.cost.toFixed(2)}</span></div>
+        ${l.lat?`<div class="li-coord" onclick="flyTo(${l.lat},${l.lng})">📍 ${l.lat.toFixed(4)}, ${l.lng.toFixed(4)} — 点击查看地图</div>`:''}
+      </div>
+      <span class="li-del" onclick="delLog('${l.id}')">🗑</span>
+    </div>`).join('');
+    return`<div class="log-day"><div class="ld-lbl">${lbl} · ${logs.length}根 · ¥${(logs.length*perCig()).toFixed(2)}</div>${items}</div>`;
+  }).join('');
+}
+
+function delLog(id){S.logs=S.logs.filter(l=>String(l.id)!==String(id));renderLog();refreshHome();showToast('已删除');}
+
+// ─── Stats ───────────────────────────────────────────────
+function renderStats(){
+  const n=new Date();
+  const mLogs=S.logs.filter(l=>l.ts.getMonth()===n.getMonth()&&l.ts.getFullYear()===n.getFullYear());
+  const spent=mLogs.length*perCig();
+  document.getElementById('mcAmt').textContent='¥'+spent.toFixed(0);
+  document.getElementById('mcSub').textContent='共抽 '+mLogs.length+' 根 · '+(mLogs.length/S.packSize).toFixed(1)+' 包';
+  const days=n.getDate();
+  document.getElementById('mcD').textContent='¥'+(spent/days).toFixed(1);
+  document.getElementById('mcY').textContent='¥'+Math.round(spent/days*365);
+  document.getElementById('mcPer').textContent='¥'+perCig().toFixed(2);
+
+  // Hour chart (24 hours, grouped by 2h slots)
+  const slots=new Array(12).fill(0);
+  S.logs.forEach(l=>slots[Math.floor(l.ts.getHours()/2)]++);
+  const mx=Math.max(...slots,1);
+  document.getElementById('hourChart').innerHTML=slots.map((v,i)=>`
+    <div class="hc-col">
+      <div class="hc-bar" style="height:${Math.max(3,v/mx*56)}px"></div>
+      <div class="hc-lbl">${i*2}</div>
+    </div>`).join('');
+
+  // Week bars
+  const dnames=['日','一','二','三','四','五','六'];
+  const wData=[];
+  for(let i=6;i>=0;i--){
+    const d=new Date();d.setDate(d.getDate()-i);
+    wData.push({lbl:dnames[d.getDay()],cnt:S.logs.filter(l=>dateKey(l.ts)===dateKey(d)).length,today:i===0});
+  }
+  const mw=Math.max(...wData.map(d=>d.cnt),S.habit,1);
+  document.getElementById('weekBars').innerHTML=wData.map(d=>{
+    const c=d.cnt<=S.habit?'var(--green)':d.cnt<=S.habit*1.3?'var(--orange)':'var(--smoke2)';
+    return`<div class="wb">
+      <div class="wb-val">${d.cnt||''}</div>
+      <div class="wb-bar" style="height:${Math.max(4,d.cnt/mw*68)}px;background:${c};opacity:${d.today?1:.65}"></div>
+      <div class="wb-lbl" style="font-weight:${d.today?700:400}">${d.lbl}</div>
+    </div>`;
+  }).join('');
+}
+
+// ─── Settings ────────────────────────────────────────────
+function renderSettings(){
+  document.getElementById('setP').textContent='¥'+S.price;
+  document.getElementById('setPS').textContent=S.packSize+'根';
+  document.getElementById('setPC').textContent='¥'+perCig().toFixed(2);
+  document.getElementById('setH').textContent=S.habit;
+  document.getElementById('setName').textContent=S.name;
+}
+function adjP(d){S.price=Math.max(5,Math.min(200,S.price+d));renderSettings();refreshHome();}
+function adjH(d){S.habit=Math.max(1,Math.min(80,S.habit+d));renderSettings();refreshHome();}
+function resetAll(){
+  S={name:'',price:25,packSize:20,habit:15,logs:[]};
+  mapMarkers.forEach(m=>leafMap?.removeLayer(m));mapMarkers=[];
+  document.getElementById('sName').value='';
+  document.getElementById('goBtn').disabled=true;
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('setup').classList.add('active');
+  document.querySelectorAll('.tab').forEach((t,i)=>{t.classList.remove('on');if(i===0)t.classList.add('on');});
+}
+
+function showMatchToast(name, loc){
+  document.querySelector('.match-toast')?.remove();
+  const t = document.createElement('div');
+  t.className = 'match-toast';
+  t.innerHTML = `
+    <span class="mt-icon">🚬</span>
+    <div class="mt-info">
+      <div class="mt-title">和 ${name} 配了一根！</div>
+      <div class="mt-sub">${loc} · 已自动记录</div>
+    </div>
+    <span class="mt-close" onclick="this.parentElement.remove()">✕</span>
+  `;
+  document.querySelector('.phone').appendChild(t);
+  setTimeout(() => t.remove(), 5000);
+}
+
+// ─── Utils ───────────────────────────────────────────────
+function refreshAll(){refreshHome();}
+function todayLogs(){const d=dateKey(new Date());return S.logs.filter(l=>dateKey(l.ts)===d);}
+function dateKey(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function fmtTime(d){return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+function perCig(){return S.price/S.packSize;}
+function calcAvg(){const n=uniqueDays();if(!n)return S.habit;return S.logs.filter(l=>{const x=new Date();x.setDate(x.getDate()-7);return l.ts>=x;}).length/Math.max(1,n);}
+function uniqueDays(){return new Set(S.logs.map(l=>dateKey(l.ts))).size;}
+function anim(el,cls){el.classList.remove(cls);void el.offsetWidth;el.classList.add(cls);el.addEventListener('animationend',()=>el.classList.remove(cls),{once:true});}
+let toastT;
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2800);}
+// ─── Firebase 配一根（真实联网）─────────────────────────────
+const FB_CONFIG = {
+  apiKey: "AIzaSyCHR9uqzZ9RRPJ1F7BBlkbgjVTmKFVp3zk",
+  authDomain: "smok-6a412.firebaseapp.com",
+  databaseURL: "https://smok-6a412-default-rtdb.firebaseio.com",
+  projectId: "smok-6a412",
+  storageBucket: "smok-6a412.firebasestorage.app",
+  messagingSenderId: "379825975937",
+  appId: "1:379825975937:web:87956bb2d859d8e4499380"
+};
+firebase.initializeApp(FB_CONFIG);
+const fbDb = firebase.database();
+
+// 持久化用户 ID 和头像
+const MY_ID = localStorage.getItem('smokUID') || (()=>{
+  const id='u_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  localStorage.setItem('smokUID',id); return id;
+})();
+const AVATARS=['🧔','👦','👩','🧑','🐯','👨','🧒','👴','🧓','😎'];
+const MY_AVATAR = localStorage.getItem('smokAvatar')||(()=>{
+  const a=AVATARS[Math.floor(Math.random()*AVATARS.length)];
+  localStorage.setItem('smokAvatar',a); return a;
+})();
+
+const EXPIRE_MS = 5 * 60 * 1000; // 5分钟广播有效期
+let signalTimer=null, dismissTimer=null;
+let pendingSignal=null;
+
+// 计算两点间距离（米），Haversine 公式
+function calcDist(lat1,lng1,lat2,lng2){
+  const R=6371000, dLat=(lat2-lat1)*Math.PI/180, dLng=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+// 抽烟时广播到 Firebase
+function broadcastSmoke(address){
+  // 显示广播提示
+  const existing=document.querySelector('.broadcast-hint');
+  existing?.remove();
+  const hint=document.createElement('div');
+  hint.className='broadcast-hint';
+  hint.innerHTML=`<span class="pei-live"></span> 已广播给附近烟友`;
+  document.querySelector('.cwrap').style.position='relative';
+  document.querySelector('.cwrap').appendChild(hint);
+  setTimeout(()=>hint.remove(), 3200);
+
+  const lat=currentLat||31.2304, lng=currentLng||121.4737;
+  const ref=fbDb.ref('active_smokes/'+MY_ID);
+  ref.set({
+    name: S.name,
+    avatar: MY_AVATAR,
+    lat, lng,
+    address: address||'未知位置',
+    ts: Date.now(),
+    expires: Date.now()+EXPIRE_MS
+  });
+  // 到期自动删除
+  setTimeout(()=>ref.remove(), EXPIRE_MS);
+}
+
+// 启动监听：收到别人广播时弹信号卡
+function startFirebaseListener(){
+  fbDb.ref('active_smokes').on('child_added', snap=>{
+    const u=snap.val();
+    if(!u || snap.key===MY_ID) return;           // 忽略自己
+    if(u.expires < Date.now()) return;            // 已过期
+    const lat=currentLat||31.2304, lng=currentLng||121.4737;
+    const dist=Math.round(calcDist(lat, lng, u.lat, u.lng));
+    if(dist > 500) return;                        // 超过500m
+    showSignal({name:u.name, avatar:u.avatar, dist, loc:u.address});
+  });
+}
+
+function showSignal(u){
+  pendingSignal = u;
+  document.getElementById('scAvatar').textContent = u.avatar;
+  document.getElementById('scDist').textContent    = u.dist + 'm';
+  document.getElementById('scName').textContent    = u.name;
+  document.getElementById('scLoc').textContent     = '正在' + u.loc + '抽烟';
+  document.getElementById('scTime').textContent    = '刚刚';
+
+  const card = document.getElementById('signalCard');
+  card.classList.remove('hiding');
+  card.classList.add('visible');
+
+  // Sound — two-tone ping
+  playTone(520); playTone(660, .12);
+
+  // Progress bar countdown (8s auto-dismiss)
+  const fill = document.getElementById('scProgressFill');
+  fill.style.transition = 'none'; fill.style.width = '100%';
+  setTimeout(() => {
+    fill.style.transition = 'width 8s linear';
+    fill.style.width = '0%';
+  }, 50);
+
+  dismissTimer = setTimeout(() => dismissSignal(), 8000);
+}
+
+function dismissSignal(){
+  clearTimeout(dismissTimer);
+  const card = document.getElementById('signalCard');
+  card.classList.add('hiding');
+  setTimeout(() => { card.classList.remove('visible','hiding'); }, 320);
+}
+
+function acceptSignal(){
+  clearTimeout(dismissTimer);
+  dismissSignal();
+  if(!pendingSignal) return;
+  const u = pendingSignal;
+
+  playTone(480); playTone(600,.1); playTone(760,.22);
+
+  // Log a cigarette at their location
+  const entry = {
+    id: Date.now(), ts: new Date(),
+    lat: currentLat || (31.2304 + (Math.random()-.5)*.003),
+    lng: currentLng || (121.4737 + (Math.random()-.5)*.003),
+    address: u.loc + '（与' + u.name + '）',
+    cost: S.price / S.packSize
+  };
+  S.logs.push(entry);
+  refreshHome();
+
+  // Match toast
+  showMatchToast(u.name, u.loc);
+  pendingSignal = null;
+}
+
+const AC=new(window.AudioContext||window.webkitAudioContext)();
+function playTone(freq,delay=0){try{const o=AC.createOscillator(),g=AC.createGain();o.connect(g);g.connect(AC.destination);o.frequency.value=freq;o.type='sine';g.gain.setValueAtTime(0,AC.currentTime+delay);g.gain.linearRampToValueAtTime(0.13,AC.currentTime+delay+0.01);g.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+delay+0.13);o.start(AC.currentTime+delay);o.stop(AC.currentTime+delay+0.13);}catch(e){}}
+</script>
+</body>
+</html>
